@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: flask-api
+    name: linkedin-post-api
     env: python
     plan: free
     buildCommand: ""
