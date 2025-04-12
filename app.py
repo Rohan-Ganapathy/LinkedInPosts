@@ -15,6 +15,7 @@ def post_to_linkedin():
 
     access_token = data.get('access_token')
     message_text = data.get('message_text')
+    image_url = data.get('image_url')  # New field for image URL
     sub = data.get('sub', "ExgjUI84Az")  # Use default if not provided
 
     if not access_token or not message_text:
@@ -27,6 +28,7 @@ def post_to_linkedin():
 
     url = "https://api.linkedin.com/v2/ugcPosts"
 
+    # Prepare the post data
     post_data = {
         "author": f"urn:li:person:{sub}",
         "lifecycleState": "PUBLISHED",
@@ -43,6 +45,17 @@ def post_to_linkedin():
         }
     }
 
+    # If an image URL is provided, add it to the post data
+    if image_url:
+        post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"] = "IMAGE"
+        post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
+            {
+                "status": "READY",
+                "originalUrl": image_url
+            }
+        ]
+
+    # Send the request
     response = requests.post(url, headers=headers, data=json.dumps(post_data))
 
     if response.status_code == 201:
