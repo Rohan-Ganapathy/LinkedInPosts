@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
 import json
-import os
 
 app = Flask(__name__)
 
@@ -15,7 +14,7 @@ def post_to_linkedin():
 
     access_token = data.get('access_token')
     message_text = data.get('message_text')
-    image_url = data.get('image_url')  # New field for image URL
+    image_path = data.get('image_path')  # Path to the image file
     sub = data.get('sub', "ExgjUI84Az")  # Use default if not provided
 
     if not access_token or not message_text:
@@ -26,10 +25,37 @@ def post_to_linkedin():
         "Content-Type": "application/json"
     }
 
-    url = "https://api.linkedin.com/v2/ugcPosts"
+    # Step 1: Initialize image upload
+    initialize_upload_url = "https://api.linkedin.com/rest/images?action=initializeUpload"
+    initialize_upload_payload = {
+        "initializeUploadRequest": {
+            "owner": f"urn:li:person:{sub}"
+        }
+    }
 
-    # Prepare the post data
-    post_data = {
+    init_response = requests.post(
+        initialize_upload_url,
+        headers=headers,
+        data=json.dumps(initialize_upload_payload)
+    )
+
+    if init_response.status_code != 200:
+        return jsonify({"error": "Failed to initialize image upload", "details": init_response.text}), init_response.status_code
+
+    upload_details = init_response.json()
+    upload_url = upload_details["value"]["uploadUrl"]
+    image_urn = upload_details["value"]["image"]
+
+    # Step 2: Upload image to LinkedIn
+    with open(image_path, "rb") as image_file:
+        upload_response = requests.put(upload_url, headers={"Authorization": f"Bearer {access_token}"}, data=image_file)
+    
+    if upload_response.status_code != 201 and upload_response.status_code != 200:
+        return jsonify({"error": "Failed to upload image", "details": upload_response.text}), upload_response.status_code
+
+    # Step 3: Create post with image URN
+    post_url = "https://api.linkedin.com/v2/ugcPosts"
+    post_payload = {
         "author": f"urn:li:person:{sub}",
         "lifecycleState": "PUBLISHED",
         "specificContent": {
@@ -37,7 +63,13 @@ def post_to_linkedin():
                 "shareCommentary": {
                     "text": message_text
                 },
-                "shareMediaCategory": "NONE"
+                "shareMediaCategory": "IMAGE",
+                "media": [
+                    {
+                        "status": "READY",
+                        "media": image_urn
+                    }
+                ]
             }
         },
         "visibility": {
@@ -45,20 +77,13 @@ def post_to_linkedin():
         }
     }
 
-    # If an image URL is provided, add it to the post data
-    if image_url:
-        post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"] = "IMAGE"
-        post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
-            {
-                "status": "READY",
-                "originalUrl": image_url
-            }
-        ]
+    post_response = requests.post(
+        post_url,
+        headers=headers,
+        data=json.dumps(post_payload)
+    )
 
-    # Send the request
-    response = requests.post(url, headers=headers, data=json.dumps(post_data))
-
-    if response.status_code == 201:
+    if post_response.status_code == 201:
         return jsonify({"status": "Post created successfully!"})
     else:
-        return jsonify({"error": response.text}), response.status_code
+        return jsonify({"error": "Failed to create post", "details": post_response.text}), post_response.status_code
