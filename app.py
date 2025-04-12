@@ -22,7 +22,8 @@ def post_to_linkedin():
 
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "LinkedIn-Version": "202404"
     }
 
     # Step 1: Initialize image upload
