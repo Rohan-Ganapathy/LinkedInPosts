@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import json
+import os
 
 app = Flask(__name__)
 
@@ -14,7 +15,7 @@ def post_to_linkedin():
 
     access_token = data.get('access_token')
     message_text = data.get('message_text')
-    image_path = data.get('image_path')  # Path to the image file
+    image_url = data.get('image_url')  # URL of the image to fetch
     sub = data.get('sub', "ExgjUI84Az")  # Use default if not provided
 
     if not access_token or not message_text:
@@ -47,14 +48,30 @@ def post_to_linkedin():
     upload_url = upload_details["value"]["uploadUrl"]
     image_urn = upload_details["value"]["image"]
 
-    # Step 2: Upload image to LinkedIn
-    with open(image_path, "rb") as image_file:
+    # Step 2: Download image from the provided URL
+    temp_image_path = "temp_image.jpg"
+    try:
+        response = requests.get(image_url, stream=True)
+        if response.status_code == 200:
+            with open(temp_image_path, "wb") as image_file:
+                for chunk in response.iter_content(1024):
+                    image_file.write(chunk)
+        else:
+            return jsonify({"error": "Failed to download image", "details": response.text}), response.status_code
+    except Exception as e:
+        return jsonify({"error": "Error downloading image", "details": str(e)}), 500
+
+    # Step 3: Upload image to LinkedIn
+    with open(temp_image_path, "rb") as image_file:
         upload_response = requests.put(upload_url, headers={"Authorization": f"Bearer {access_token}"}, data=image_file)
-    
+
     if upload_response.status_code != 201 and upload_response.status_code != 200:
         return jsonify({"error": "Failed to upload image", "details": upload_response.text}), upload_response.status_code
 
-    # Step 3: Create post with image URN
+    # Remove temporary image file
+    os.remove(temp_image_path)
+
+    # Step 4: Create post with image URN
     post_url = "https://api.linkedin.com/v2/ugcPosts"
     post_payload = {
         "author": f"urn:li:person:{sub}",
